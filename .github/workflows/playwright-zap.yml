@@ -1,7 +1,7 @@
 name: Playwright + ZAP Scan
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   e2e_and_zap:
@@ -24,11 +24,10 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Run login + export session
-        run: |
-          node scripts/mock-session.cjs
-        # Script này dùng Playwright login và export cookies vào session.json
+        run: node scripts/mock-session.cjs
+        # Script này tạo session.json: { "JSESSIONID": "xxxxx" }
 
-      - name: Upload session to share with ZAP
+      - name: Upload session artifact
         uses: actions/upload-artifact@v4
         with:
           name: pw-session
@@ -40,13 +39,28 @@ jobs:
         with:
           name: pw-session
 
-      - name: Pull ZAP Docker image
-        run: docker pull ghcr.io/zaproxy/zaproxy:stable
+      - name: Create ZAP cookie injector script
+        run: |
+          cat << 'EOF' > scripts/load-session.js
+          var jsession = java.lang.System.getenv("JSESSIONID");
+
+          function sendingRequest(msg, initiator, helper) {
+              if (jsession) {
+                  msg.getRequestHeader().setHeader("Cookie", "JSESSIONID=" + jsession);
+              }
+          }
+          EOF
+
+      - name: Read session.json and export as ENV
+        run: |
+          export VALUE=$(jq -r '.JSESSIONID' session.json)
+          echo "JSESSIONID=$VALUE" >> $GITHUB_ENV
 
       - name: Run ZAP Full Scan
         run: |
-          docker run --network="host" \
-            -v $(pwd):/zap/wrk \
+          docker run \
+            -e JSESSIONID=${{ env.JSESSIONID }} \
+            -v "$(pwd)":/zap/wrk \
             ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py \
               -t "https://your-app-url.com" \
               -d \
