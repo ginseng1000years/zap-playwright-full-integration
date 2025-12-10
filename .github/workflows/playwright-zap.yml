@@ -25,7 +25,7 @@ jobs:
 
       - name: Run login + export session
         run: |
-          node scripts/mock-session.js
+          node scripts/mock-session.cjs
         # Script này dùng Playwright login và export cookies vào session.json
 
       - name: Upload session to share with ZAP
