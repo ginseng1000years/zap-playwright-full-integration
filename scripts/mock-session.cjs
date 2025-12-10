@@ -3,14 +3,14 @@ const fs = require("fs");
 const mockSession = {
   cookies: [
     {
-      name: "session_id",
-      value: "token-xyz",
+      name: "JSESSIONID",
+      value: "fake-session-1234567890",
       domain: "your-app-url.com",
       path: "/",
       expires: -1,
-      httpOnly: false,
-      secure: false,
-      sameSite: "Lax"
+      httpOnly: true,
+      secure: true,
+      sameSite: "None"
     }
   ],
   origins: []
