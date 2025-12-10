@@ -1,0 +1,61 @@
+name: Playwright + ZAP Scan
+
+on:
+  workflow_dispatch: 
+
+jobs:
+  e2e_and_zap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # --- PLAYWRIGHT PHASE ---
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run login + export session
+        run: |
+          node scripts/mock-session.js
+        # Script này dùng Playwright login và export cookies vào session.json
+
+      - name: Upload session to share with ZAP
+        uses: actions/upload-artifact@v4
+        with:
+          name: pw-session
+          path: session.json
+
+      # --- ZAP PHASE ---
+      - name: Download session
+        uses: actions/download-artifact@v4
+        with:
+          name: pw-session
+
+      - name: Pull ZAP Docker image
+        run: docker pull ghcr.io/zaproxy/zaproxy:stable
+
+      - name: Run ZAP Full Scan
+        run: |
+          docker run --network="host" \
+            -v $(pwd):/zap/wrk \
+            ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py \
+              -t "https://your-app-url.com" \
+              -d \
+              -I \
+              --hook=/zap/wrk/scripts/load-session.js \
+              -r zap-report.html
+
+      - name: Upload ZAP report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap-report.html
