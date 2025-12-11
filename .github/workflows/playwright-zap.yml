@@ -11,21 +11,12 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # --- PLAYWRIGHT PHASE ---
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
-      - name: Run login + export session
-        run: node scripts/mock-session.cjs
-        # Script này tạo session.json: { "JSESSIONID": "xxxxx" }
+      - name: Run login + export session (Playwright Docker)
+        run: |
+          docker run --rm \
+            -v "$(pwd)":/work -w /work \
+            mcr.microsoft.com/playwright:v1.57.0-noble \
+            bash -lc "npm ci && node scripts/mock-session.cjs"
 
       - name: Upload session artifact
         uses: actions/upload-artifact@v4
