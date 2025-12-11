@@ -2,6 +2,9 @@ name: Playwright + ZAP Scan
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   e2e_and_zap:
