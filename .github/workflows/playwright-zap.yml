@@ -2,6 +2,11 @@ name: Playwright + ZAP Scan
 
 on:
   workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target URL for ZAP scan'
+        required: true
+        default: 'https://playwright.dev/docs/docker'
   push:
     branches:
       - main
@@ -51,15 +56,17 @@ jobs:
 
       - name: Run ZAP Full Scan
         run: |
-          docker run \
+          # run the ZAP container as root so it can write the report into the mounted workspace
+          docker run --rm \
+            --user 0:0 \
             -e JSESSIONID=${{ env.JSESSIONID }} \
-            -v "$(pwd)":/zap/wrk \
+            -v "$(pwd)":/zap/wrk:rw \
             ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py \
-              -t "http://rakuten-card.co.jp/" \
+              -t "${{ github.event.inputs.target_url }}" \
               -d \
               -I \
               --hook=/zap/wrk/scripts/load-session.py \
-              -r zap-report.html
+              -r /zap/wrk/zap-report.html
 
       - name: Upload ZAP report
         uses: actions/upload-artifact@v4
