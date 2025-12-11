@@ -7,6 +7,10 @@ on:
         description: 'Target URL for ZAP scan'
         required: false
         default: ''
+      zap_options:
+        description: 'Extra ZAP CLI options to pass via -z (e.g. "-config ascan.threadPerHost=10")'
+        required: false
+        default: ''
   push:
     branches:
       - main
@@ -23,6 +27,8 @@ jobs:
       DEFAULT_TARGET: https://playwright.dev/docs/docker
       # derive TARGET from input when present, otherwise use DEFAULT_TARGET
       TARGET: ${{ github.event.inputs.target_url || 'https://playwright.dev/docs/docker' }}
+      # default ZAP options: increase active scan threads and limit per-scan duration
+      ZAP_OPTIONS: "${{ github.event.inputs.zap_options || '-config ascan.threadPerHost=5 -config ascan.maxScanDuration=15' }}"
 
     steps:
       - name: Checkout repository
@@ -88,15 +94,16 @@ jobs:
             exit 1
           fi
           echo "Running ZAP container to scan $TARGET (simple mode)"
+          # build args and include ZAP_OPTIONS if set
+          ARGS=( -t "$TARGET" -d -I --hook=$ZAP_WORKDIR/scripts/load-session.py -r $ZAP_REPORT )
+          if [ -n "$ZAP_OPTIONS" ]; then
+            ARGS+=( -z "$ZAP_OPTIONS" )
+          fi
+
           docker run --rm \
             -e JSESSIONID="$JSESSIONID" \
             -v "${{ github.workspace }}":$ZAP_WORKDIR:rw \
-            "$ZAP_IMAGE" zap-full-scan.py \
-              -t "$TARGET" \
-              -d \
-              -I \
-              --hook=$ZAP_WORKDIR/scripts/load-session.py \
-              -r $ZAP_REPORT
+            "$ZAP_IMAGE" zap-full-scan.py "${ARGS[@]}"
 
       - name: "Post-scan: show report head and fix ownership"
         if: always()
