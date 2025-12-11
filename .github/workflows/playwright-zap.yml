@@ -33,16 +33,15 @@ jobs:
 
       # --- ZAP PHASE ---
 
-      - name: Create ZAP cookie injector script
+      - name: Create ZAP cookie injector script (Python hook)
         run: |
-          cat << 'EOF' > scripts/load-session.js
-          var jsession = java.lang.System.getenv("JSESSIONID");
+          cat << 'EOF' > scripts/load-session.py
+          import os
 
-          function sendingRequest(msg, initiator, helper) {
-              if (jsession) {
-                  msg.getRequestHeader().setHeader("Cookie", "JSESSIONID=" + jsession);
-              }
-          }
+          def sendingRequest(msg, initiator, helper):
+              jsession = os.getenv('JSESSIONID')
+              if jsession:
+                  msg.getRequestHeader().setHeader('Cookie', 'JSESSIONID=' + jsession)
           EOF
 
       - name: Read session.json and export as ENV
@@ -59,7 +58,7 @@ jobs:
               -t "https://your-app-url.com" \
               -d \
               -I \
-              --hook=/zap/wrk/scripts/load-session.js \
+              --hook=/zap/wrk/scripts/load-session.py \
               -r zap-report.html
 
       - name: Upload ZAP report
