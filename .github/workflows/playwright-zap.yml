@@ -82,11 +82,11 @@ jobs:
             exit 1
           fi
           echo "Running ZAP container to scan $TARGET as the runner UID/GID"
-          UID=$(id -u)
-          GID=$(id -g)
-          echo "Using UID:GID = $UID:$GID"
+          RUNNER_UID=$(id -u)
+          RUNNER_GID=$(id -g)
+          echo "Using UID:GID = $RUNNER_UID:$RUNNER_GID"
           docker run --rm \
-            --user $UID:$GID \
+            --user $RUNNER_UID:$RUNNER_GID \
             -e JSESSIONID="$JSESSIONID" \
             -v "${{ github.workspace }}":$ZAP_WORKDIR:rw \
             "$ZAP_IMAGE" zap-full-scan.py \
