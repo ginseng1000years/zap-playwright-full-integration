@@ -56,13 +56,22 @@ jobs:
 
       - name: Run ZAP Full Scan
         run: |
-          # run the ZAP container as root so it can write the report into the mounted workspace
+          # Debug-friendly run: validate and print the target, enable shell tracing
+          set -euxo pipefail
+          TARGET="${{ github.event.inputs.target_url }}"
+          echo "ZAP target: $TARGET"
+          if [ -z "$TARGET" ]; then
+            echo "ERROR: target_url is empty" >&2
+            exit 1
+          fi
+          # Run ZAP inside the container as root so it can write the report into the mounted workspace
+          echo "Running: docker run --rm --user 0:0 -e JSESSIONID=*** -v \"$(pwd)\":/zap/wrk:rw ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py -t \"$TARGET\" -d -I --hook=/zap/wrk/scripts/load-session.py -r /zap/wrk/zap-report.html"
           docker run --rm \
             --user 0:0 \
-            -e JSESSIONID=${{ env.JSESSIONID }} \
+            -e JSESSIONID="${{ env.JSESSIONID }}" \
             -v "$(pwd)":/zap/wrk:rw \
             ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py \
-              -t "${{ github.event.inputs.target_url }}" \
+              -t "$TARGET" \
               -d \
               -I \
               --hook=/zap/wrk/scripts/load-session.py \
