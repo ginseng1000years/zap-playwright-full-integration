@@ -55,7 +55,7 @@ jobs:
             -e JSESSIONID=${{ env.JSESSIONID }} \
             -v "$(pwd)":/zap/wrk \
             ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py \
-              -t "https://your-app-url.com" \
+              -t "http://rakuten-card.co.jp/" \
               -d \
               -I \
               --hook=/zap/wrk/scripts/load-session.py \
