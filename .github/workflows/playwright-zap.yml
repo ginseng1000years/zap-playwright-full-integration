@@ -21,17 +21,17 @@ jobs:
             mcr.microsoft.com/playwright:v1.57.0-noble \
             bash -lc "npm ci && node scripts/mock-session.cjs"
 
-      - name: Upload session artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pw-session
-          path: session.json
+      - name: Check session.json exists
+        run: |
+          echo "Checking for session.json produced by the Playwright step..."
+          if [ ! -f session.json ]; then
+            echo "ERROR: session.json not found in workspace. Make sure the Playwright step created it." >&2
+            ls -la
+            exit 1
+          fi
+          echo "session.json found:" && cat session.json
 
       # --- ZAP PHASE ---
-      - name: Download session
-        uses: actions/download-artifact@v4
-        with:
-          name: pw-session
 
       - name: Create ZAP cookie injector script
         run: |
