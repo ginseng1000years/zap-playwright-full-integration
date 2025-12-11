@@ -5,8 +5,8 @@ on:
     inputs:
       target_url:
         description: 'Target URL for ZAP scan'
-        required: true
-        default: 'https://playwright.dev/docs/docker'
+        required: false
+        default: ''
   push:
     branches:
       - main
@@ -14,19 +14,33 @@ on:
 jobs:
   e2e_and_zap:
     runs-on: ubuntu-latest
+    # job-level environment to avoid repeating values (DRY)
+    env:
+      PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.57.0-noble
+      ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:stable
+      ZAP_WORKDIR: /zap/wrk
+      ZAP_REPORT: /zap/wrk/zap-report.html
+      DEFAULT_TARGET: https://playwright.dev/docs/docker
+      # derive TARGET from input when present, otherwise use DEFAULT_TARGET
+      TARGET: ${{ github.event.inputs.target_url || 'https://playwright.dev/docs/docker' }}
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Ensure tools (jq)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
 
       - name: Run login + export session (Playwright Docker)
         run: |
           docker run --rm \
-            -v "$(pwd)":/work -w /work \
-            mcr.microsoft.com/playwright:v1.57.0-noble \
+            -v "${{ github.workspace }}":/work -w /work \
+            "$PLAYWRIGHT_IMAGE" \
             bash -lc "npm ci && node scripts/mock-session.cjs"
 
-      - name: Check session.json exists
+      - name: Assert session.json exists
         run: |
           echo "Checking for session.json produced by the Playwright step..."
           if [ ! -f session.json ]; then
@@ -36,48 +50,48 @@ jobs:
           fi
           echo "session.json found:" && cat session.json
 
-      # --- ZAP PHASE ---
-
       - name: Create ZAP cookie injector script (Python hook)
         run: |
-          cat << 'EOF' > scripts/load-session.py
+          cat > scripts/load-session.py <<'PY'
           import os
 
           def sendingRequest(msg, initiator, helper):
               jsession = os.getenv('JSESSIONID')
               if jsession:
                   msg.getRequestHeader().setHeader('Cookie', 'JSESSIONID=' + jsession)
-          EOF
+          PY
 
-      - name: Read session.json and export as ENV
+      - name: Export JSESSIONID from session.json
         run: |
-          export VALUE=$(jq -r '.JSESSIONID' session.json)
+          VALUE=$(jq -r '.JSESSIONID' session.json)
+          if [ -z "$VALUE" ] || [ "$VALUE" = "null" ]; then
+            echo "ERROR: JSESSIONID not found in session.json" >&2
+            exit 1
+          fi
           echo "JSESSIONID=$VALUE" >> $GITHUB_ENV
 
       - name: Run ZAP Full Scan
-        env:
-          # Use the workflow_dispatch input when present; fall back to a sensible default for push runs
-          TARGET: ${{ github.event.inputs.target_url || 'https://playwright.dev/docs/docker' }}
         run: |
-          # Debug-friendly run: validate and print the target, enable shell tracing
           set -euxo pipefail
           echo "ZAP target: $TARGET"
           if [ -z "$TARGET" ]; then
             echo "ERROR: target_url is empty" >&2
             exit 1
           fi
-          # Run ZAP inside the container as root so it can write the report into the mounted workspace
-          echo "Running: docker run --rm --user 0:0 -e JSESSIONID=*** -v \"$(pwd)\":/zap/wrk:rw ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py -t \"$TARGET\" -d -I --hook=/zap/wrk/scripts/load-session.py -r /zap/wrk/zap-report.html"
+          echo "Running ZAP container to scan $TARGET as the runner UID/GID"
+          UID=$(id -u)
+          GID=$(id -g)
+          echo "Using UID:GID = $UID:$GID"
           docker run --rm \
-            --user 0:0 \
-            -e JSESSIONID="${{ env.JSESSIONID }}" \
-            -v "$(pwd)":/zap/wrk:rw \
-            ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py \
+            --user $UID:$GID \
+            -e JSESSIONID="$JSESSIONID" \
+            -v "${{ github.workspace }}":$ZAP_WORKDIR:rw \
+            "$ZAP_IMAGE" zap-full-scan.py \
               -t "$TARGET" \
               -d \
               -I \
-              --hook=/zap/wrk/scripts/load-session.py \
-              -r /zap/wrk/zap-report.html
+              --hook=$ZAP_WORKDIR/scripts/load-session.py \
+              -r $ZAP_REPORT
 
       - name: Upload ZAP report
         uses: actions/upload-artifact@v4
