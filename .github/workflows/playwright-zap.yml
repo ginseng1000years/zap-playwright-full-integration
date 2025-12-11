@@ -81,10 +81,13 @@ jobs:
             echo "ERROR: target_url is empty" >&2
             exit 1
           fi
-          echo "Running ZAP container to scan $TARGET as the runner UID/GID"
+          echo "Running ZAP container to scan $TARGET as the runner UID/GID (with fallback)"
           RUNNER_UID=$(id -u)
           RUNNER_GID=$(id -g)
           echo "Using UID:GID = $RUNNER_UID:$RUNNER_GID"
+
+          # Try running as the runner UID/GID first (preferred for security).
+          set +e
           docker run --rm \
             --user $RUNNER_UID:$RUNNER_GID \
             -e JSESSIONID="$JSESSIONID" \
@@ -94,7 +97,35 @@ jobs:
               -d \
               -I \
               --hook=$ZAP_WORKDIR/scripts/load-session.py \
-              -r $ZAP_REPORT
+              -r $ZAP_REPORT  > zap-docker.log 2>&1
+          RC=$?
+          set -e
+
+          if [ $RC -eq 0 ]; then
+            echo "ZAP run succeeded as runner UID/GID"
+          else
+            echo "ZAP run failed with rc=$RC. Showing last 200 lines of container log:"
+            tail -n 200 zap-docker.log || true
+            # Detect common startup failure message and retry as root if present
+            if grep -qi "Failed to start ZAP" zap-docker.log || grep -qi "ERROR" zap-docker.log; then
+              echo "Detected ZAP startup failure; retrying as root after creating writable report file"
+              # Prepare a writable report file so non-root root process inside container can write it
+              touch zap-report.html || true
+              chmod 666 zap-report.html || true
+              docker run --rm \
+                -e JSESSIONID="$JSESSIONID" \
+                -v "${{ github.workspace }}":$ZAP_WORKDIR:rw \
+                "$ZAP_IMAGE" zap-full-scan.py \
+                  -t "$TARGET" \
+                  -d \
+                  -I \
+                  --hook=$ZAP_WORKDIR/scripts/load-session.py \
+                  -r $ZAP_REPORT
+            else
+              echo "ZAP failed but no clear startup failure detected; failing job (rc=$RC)" >&2
+              exit $RC
+            fi
+          fi
 
       - name: Upload ZAP report
         uses: actions/upload-artifact@v4
