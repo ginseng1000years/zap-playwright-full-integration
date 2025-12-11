@@ -63,9 +63,12 @@ jobs:
 
       - name: Export JSESSIONID from session.json
         run: |
-          VALUE=$(jq -r '.JSESSIONID' session.json)
+          echo "session.json content:" && cat session.json
+          # Try several common shapes for session JSON to extract JSESSIONID
+          VALUE=$(jq -r '.JSESSIONID // .JSESSIONID.value // (.cookies[]? | select(.name=="JSESSIONID") | .value) // empty' session.json)
           if [ -z "$VALUE" ] || [ "$VALUE" = "null" ]; then
             echo "ERROR: JSESSIONID not found in session.json" >&2
+            echo "Tried selectors: .JSESSIONID, .JSESSIONID.value, .cookies[] | select(.name==\"JSESSIONID\") .value" >&2
             exit 1
           fi
           echo "JSESSIONID=$VALUE" >> $GITHUB_ENV
