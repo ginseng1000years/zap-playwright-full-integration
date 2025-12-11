@@ -55,10 +55,12 @@ jobs:
           echo "JSESSIONID=$VALUE" >> $GITHUB_ENV
 
       - name: Run ZAP Full Scan
+        env:
+          # Use the workflow_dispatch input when present; fall back to a sensible default for push runs
+          TARGET: ${{ github.event.inputs.target_url || 'https://playwright.dev/docs/docker' }}
         run: |
           # Debug-friendly run: validate and print the target, enable shell tracing
           set -euxo pipefail
-          TARGET="${{ github.event.inputs.target_url }}"
           echo "ZAP target: $TARGET"
           if [ -z "$TARGET" ]; then
             echo "ERROR: target_url is empty" >&2
